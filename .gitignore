@@ -1,0 +1,12 @@
+# Dossiers temporaires
+node_modules/
+dist/
+build/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Environnement / config locale
+.env
+*.log
