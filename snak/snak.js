@@ -17,6 +17,11 @@ let keys;
 let score = 0;
 let scoreText;
 let sceneRef;
+let isPaused = false;
+let pauseText;
+let pauseOverlay;
+
+
 
 const game = new Phaser.Game(config);
 
@@ -42,7 +47,7 @@ function create() {
   // Serpent initial (3 carrés)
   const startX = 400;
   const startY = 300;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 1; i++) {
     const part = this.add.image(startX - i * cellSize, startY, "body");
     snake.push(part);
   }
@@ -64,9 +69,30 @@ function create() {
     leftA: Phaser.Input.Keyboard.KeyCodes.LEFT,
     rightA: Phaser.Input.Keyboard.KeyCodes.RIGHT
   });
+
+  // --- Effet visuel pause ---
+  pauseOverlay = this.add.rectangle(400, 300, 800, 600, 0xeaefff, 0.4);
+  pauseOverlay.setVisible(false);
+    // Texte "Pause" centré, caché au départ
+  pauseText = this.add.text(400, 300, "⏸ PAUSE", {
+    fontSize: "48px",
+    fill: "#ffffff",
+    fontStyle: "bold"
+  }).setOrigin(0.5).setVisible(false);
+
+  // Gestion touche Espace pour pause
+  this.input.keyboard.on('keydown-SPACE', () => {
+    isPaused = !isPaused; // on inverse l'état
+    pauseText.setVisible(isPaused);
+    pauseOverlay.setVisible(isPaused);
+  });
+
+
 }
 
 function update(time) {
+ if (isPaused) return; // bloque le jeu pendant la pause
+
   // Direction
   if ((keys.left.isDown || keys.leftA.isDown) && direction !== "RIGHT")
     nextDirection = "LEFT";
@@ -143,7 +169,7 @@ function restartGame() {
   nextDirection = "RIGHT";
   const startX = 400;
   const startY = 300;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 1; i++) {
     const part = sceneRef.add.image(startX - i * cellSize, startY, "body");
     snake.push(part);
   }
