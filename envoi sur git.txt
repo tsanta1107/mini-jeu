@@ -1,0 +1,9 @@
+git status
+
+git add --all
+
+git commit -m"commentaire"
+
+git pull
+
+git push 
