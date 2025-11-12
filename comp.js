@@ -10,7 +10,8 @@ const config = {
 let snake = [];
 let direction = "RIGHT";
 let nextDirection = "RIGHT";
-let food;
+let foods = [];
+const foodCount = 5;
 let moveTimer = 0;
 const moveDelay = 150;
 let keys;
@@ -28,58 +29,47 @@ let obstacles = [];
 let startMenu;
 let startButton;
 let titleText;
-let playerName = "à vous"; // pseudo
+let playerName = "à vous";
 let pauseText;
-let headTextureLoaded = false; // vérif charge de la tête
+let rotationTarget = 90;
 
 const game = new Phaser.Game(config);
 
 
-//      PRELOAD
-
+// -------- PRELOAD --------
 function preload() {
-  // Image de fond et tête (assure-toi que le chemin est correct)
+  // Fond et textures principales
   this.load.image('herbe', 'snak/assets/boz.jpg');
   this.load.image('head', 'snak/assets/tt.png');
+
+  // Obstacles
   this.load.image('ail', 'snak/assets/ail.png');
   this.load.image('oignon', 'snak/assets/oignon.png');
-  
 
+  // Nourritures (ajoute d'autres si tu veux)
+  this.load.image('pomme', 'snak/assets/pomme.png');
+  this.load.image('banane', 'snak/assets/banane.png');
+  this.load.image('tomate', 'snak/assets/tomate.png');
+  this.load.image('fraise', 'snak/assets/fraise.png');
 
-  // Crée les textures dynamiques pour le corps, nourriture et obstacles
+  // Texture du corps
   const g1 = this.add.graphics();
   g1.fillStyle(0x0088ff, 0.9);
-  //g1.fillRect(0, 0, cellSize, cellSize);
   g1.fillCircle(cellSize / 2, cellSize / 2, cellSize / 2);
   g1.generateTexture("body", cellSize, cellSize);
   g1.destroy();
-
-  const g2 = this.add.graphics();
-  g2.fillStyle(0xffd700, 1);
-  g2.fillCircle(cellSize / 2, cellSize / 2, cellSize / 2);
-  g2.generateTexture("food", cellSize, cellSize);
-  g2.destroy();
-
-  const g3 = this.add.graphics();
-  g3.fillStyle(0x654321, 1);
-  g3.fillRect(0, 0, cellSize, cellSize);
-  g3.generateTexture("obstacle", cellSize, cellSize);
-  g3.destroy();
 }
 
 
-//      CREATE
-
+// -------- CREATE --------
 function create() {
   sceneRef = this;
 
-  // --- Fond herbe (conteneur pour pouvoir flouter séparément) ---
   bgContainer = this.add.container(0, 0);
   const bgImage = this.add.image(400, 300, 'herbe').setDisplaySize(800, 600);
   bgContainer.add(bgImage);
   bgContainer.setDepth(-10);
 
-  // --- Menu principal ---
   titleText = this.add.text(400, 180, "🐍 Jeu de Serpent 🐍", {
     fontSize: "60px",
     fill: "#00ff00",
@@ -99,39 +89,29 @@ function create() {
     padding: { x: 20, y: 10 }
   }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-  startButton.on('pointerover', () => startButton.setStyle({ fill: "#00ff00" }));
-  startButton.on('pointerout', () => startButton.setStyle({ fill: "#ffd700" }));
   startButton.on('pointerdown', () => {
     startMenu.setVisible(false);
     startGame();
   });
 
-  // Texte fin de partie
   gameOverText = this.add.text(400, 260, "", {
     fontSize: "48px", fill: "#ff0000", fontStyle: "bold"
   }).setOrigin(0.5).setVisible(false);
 
-  // Score
   scoreText = this.add.text(10, 10, "", { fontSize: "24px", fill: "#fff" });
   bestScoreText = this.add.text(10, 40, "", { fontSize: "20px", fill: "#aaa" });
 
-  // Menu principal container
   startMenu = this.add.container(0, 0, [titleText, playerText, startButton]);
 
-  // Touches clavier
   keys = this.input.keyboard.addKeys({
     up: Phaser.Input.Keyboard.KeyCodes.Z,
     down: Phaser.Input.Keyboard.KeyCodes.S,
     left: Phaser.Input.Keyboard.KeyCodes.Q,
     right: Phaser.Input.Keyboard.KeyCodes.D,
-    upA: Phaser.Input.Keyboard.KeyCodes.UP,
-    downA: Phaser.Input.Keyboard.KeyCodes.DOWN,
-    leftA: Phaser.Input.Keyboard.KeyCodes.LEFT,
-    rightA: Phaser.Input.Keyboard.KeyCodes.RIGHT,
     space: Phaser.Input.Keyboard.KeyCodes.SPACE
   });
 
-  // --- Pause avec espace ---
+  // --- Pause ---
   this.input.keyboard.on('keydown-SPACE', () => {
     if (!gameStarted) {
       if (startMenu.visible) {
@@ -141,9 +121,7 @@ function create() {
       return;
     }
 
-    // --- Toggle pause ---
     isPaused = !isPaused;
-
     if (isPaused) {
       setBackgroundBlur(this, true);
       pauseText = this.add.text(400, 300, "⏸ PAUSE", {
@@ -155,17 +133,13 @@ function create() {
       }).setOrigin(0.5).setDepth(1000);
     } else {
       setBackgroundBlur(this, false);
-      if (pauseText) {
-        pauseText.destroy();
-        pauseText = null;
-      }
+      if (pauseText) pauseText.destroy();
     }
   });
 }
 
 
-//     START GAME
-
+// -------- START GAME --------
 function startGame() {
   gameStarted = true;
   gameOverText.setVisible(false);
@@ -176,44 +150,41 @@ function startGame() {
   snake = [];
   obstacles.forEach(o => o.sprite.destroy());
   obstacles = [];
+  foods.forEach(f => f.destroy());
+  foods = [];
 
-  if (food) food.destroy();
-  food = null;
-
-  // Retirer flou si présent
   setBackgroundBlur(sceneRef, false);
 
   const startX = 400;
   const startY = 300;
 
-  //  Crée la tête (image) comme premier segment 
   const head = sceneRef.add.image(startX, startY, 'head').setDisplaySize(cellSize, cellSize);
   snake.push(head);
-  
-   // crée quelques segments de corps derrière la tête visuellement (facultatif)
+
   for (let i = 1; i < 3; i++) {
     const seg = sceneRef.add.image(startX - i * cellSize, startY, 'body');
     snake.push(seg);
   }
 
-  food = sceneRef.add.image(randomX(), randomY(), "food");
+  // 5 nourritures aléatoires
+  for (let i = 0; i < 5; i++) createFood();
 
-  for (let i = 0; i < 20; i++) createObstacle();
+  // obstacles
+  for (let i = 0; i < 10; i++) createObstacle();
 
   scoreText.setText("Score: " + score);
   bestScoreText.setText("Meilleur: " + bestScore);
 }
 
 
-//     UPDATE
-
+// -------- UPDATE --------
 function update(time) {
   if (!gameStarted || isPaused) return;
 
-  if ((keys.left.isDown || keys.leftA.isDown) && direction !== "RIGHT") nextDirection = "LEFT";
-  else if ((keys.right.isDown || keys.rightA.isDown) && direction !== "LEFT") nextDirection = "RIGHT";
-  else if ((keys.up.isDown || keys.upA.isDown) && direction !== "DOWN") nextDirection = "UP";
-  else if ((keys.down.isDown || keys.downA.isDown) && direction !== "UP") nextDirection = "DOWN";
+  if (keys.left.isDown && direction !== "RIGHT") nextDirection = "LEFT";
+  else if (keys.right.isDown && direction !== "LEFT") nextDirection = "RIGHT";
+  else if (keys.up.isDown && direction !== "DOWN") nextDirection = "UP";
+  else if (keys.down.isDown && direction !== "UP") nextDirection = "DOWN";
 
   if (time > moveTimer) {
     moveSnake();
@@ -222,130 +193,104 @@ function update(time) {
 }
 
 
-//     MOVE SNAKE
-
+// -------- MOVE SNAKE --------
 function moveSnake() {
   direction = nextDirection;
   const head = snake[0];
   const newX = head.x + (direction === "LEFT" ? -cellSize : direction === "RIGHT" ? cellSize : 0);
   const newY = head.y + (direction === "UP" ? -cellSize : direction === "DOWN" ? cellSize : 0);
 
-  if (newX < 0 || newX >= config.width || newY < 0 || newY >= config.height) {
-    gameOver();
-    return;
-  }
+  if (newX < 0 || newX >= config.width || newY < 0 || newY >= config.height) return gameOver();
 
-  for (let i = 1; i < snake.length; i++) {
-    if (snake[i].x === newX && snake[i].y === newY) {
-      gameOver();
-      return;
-    }
-  }
+  for (let i = 1; i < snake.length; i++)
+    if (snake[i].x === newX && snake[i].y === newY) return gameOver();
 
-  for (let o of obstacles) {
-    if (Phaser.Math.Distance.Between(newX, newY, o.sprite.x, o.sprite.y) < cellSize / 2) {
-      gameOver();
-      return;
-    }
-  }
+  for (let o of obstacles)
+    if (Phaser.Math.Distance.Between(newX, newY, o.sprite.x, o.sprite.y) < cellSize / 2)
+      return gameOver();
 
-  // --- Crée la nouvelle tête (toujours avec la texture 'head') ---
   const newHead = sceneRef.add.image(newX, newY, 'head').setDisplaySize(cellSize, cellSize);
   snake.unshift(newHead);
+  snake[1].setTexture('body');
 
-  // transforme l'ancienne tête (maintenant snake[1]) en corps
-  if (snake.length > 1) {
-    snake[1].setTexture('body');
-    snake[1].setDisplaySize(cellSize, cellSize);
+  let grew = false;
+
+  // --- collision avec la nourriture ---
+  for (let f of foods) {
+    if (Phaser.Math.Distance.Between(newX, newY, f.x, f.y) < cellSize / 2) {
+      score++;
+      scoreText.setText("Score: " + score);
+      if (score > bestScore) {
+        bestScore = score;
+        bestScoreText.setText("Meilleur: " + bestScore);
+      }
+      f.setPosition(randomX(), randomY()); // repositionne la nourriture
+      grew = true;
+    }
   }
 
-  // Si a mangé la nourriture, on laisse la queue (grandit)
-  if (newX === food.x && newY === food.y) {
-    score++;
-    scoreText.setText("Score: " + score);
-    if (score > bestScore) {
-      bestScore = score;
-      bestScoreText.setText("Meilleur: " + bestScore);
-    }
-    food.setPosition(randomX(), randomY());
-    if (Math.random() < 0.5) createObstacle();
-  } else {
-    // retire la queue
+  if (!grew) {
     const tail = snake.pop();
     tail.destroy();
   }
 
-  // --- Faire pivoter la tête selon la direction ---
   const currentHead = snake[0];
-  if (direction === "UP") currentHead.setAngle(0);
-  else if (direction === "RIGHT") currentHead.setAngle(90);
-  else if (direction === "DOWN") currentHead.setAngle(180);
-  else if (direction === "LEFT") currentHead.setAngle(-90);
+  const targetAngle =
+    direction === "UP" ? 0 :
+    direction === "RIGHT" ? 90 :
+    direction === "DOWN" ? 180 : -90;
+  sceneRef.tweens.add({
+    targets: currentHead,
+    angle: targetAngle,
+    duration: 100,
+    ease: 'Sine.easeOut'
+  });
 }
 
 
-/*/     OBSTACLES
-
-function createObstacle() {
-  const x = randomX();
-  const y = randomY();
-  if (Phaser.Math.Distance.Between(x, y, 400, 300) < 50) return;
-  const obs = sceneRef.add.image(x, y, "obstacle");
-  const vx = Phaser.Math.FloatBetween(-0.2, 0.2);
-  const vy = Phaser.Math.FloatBetween(-0.2, 0.2);
-  obstacles.push({ sprite: obs, vx, vy });
-}*/
-function createObstacle() {
-  const x = randomX();
-  const y = randomY();
-
-  // éviter de faire apparaître un obstacle trop proche du centre
-  if (Phaser.Math.Distance.Between(x, y, 400, 300) < 50) return;
-
-  // choisir une image au hasard
-  const obstacleType = Phaser.Math.Between(1, 2); // 1 ou 2
-  const textureKey = obstacleType === 1 ? 'ail' : 'oignon';
-
-  // créer l’obstacle
-  const obs = sceneRef.add.image(x, y, textureKey)
-    .setDisplaySize(cellSize * 1.5, cellSize * 1.5)
+// -------- CREATE FOOD --------
+function createFood() {
+  const foodTypes = ["pomme", "banane", "tomate", "fraise"];
+  const tex = foodTypes[Phaser.Math.Between(0, foodTypes.length - 1)];
+  const f = sceneRef.add.image(randomX(), randomY(), tex)
+    .setDisplaySize(cellSize, cellSize)
     .setDepth(0);
-
-  // vitesse aléatoire de déplacement
-  const vx = Phaser.Math.FloatBetween(-0.2, 0.2);
-  const vy = Phaser.Math.FloatBetween(-0.2, 0.2);
-
-  obstacles.push({ sprite: obs, vx, vy });
+  foods.push(f);
 }
 
 
+// -------- CREATE OBSTACLE --------
+function createObstacle() {
+  const x = randomX();
+  const y = randomY();
+  if (Phaser.Math.Distance.Between(x, y, 400, 300) < 50) return;
+  const textureKey = Phaser.Math.Between(0, 1) === 0 ? 'ail' : 'oignon';
+  const obs = sceneRef.add.image(x, y, textureKey)
+    .setDisplaySize(cellSize * 1.5, cellSize * 1.5);
+  obstacles.push({ sprite: obs });
+}
 
-//     GAME OVER
 
+// -------- GAME OVER --------
 function gameOver() {
   snake.forEach(p => p.destroy());
   snake = [];
   obstacles.forEach(o => o.sprite.destroy());
   obstacles = [];
-  if (food) food.destroy();
-  food = null;
-
+  foods.forEach(f => f.destroy());
+  foods = [];
   setBackgroundBlur(sceneRef, true);
-
   gameOverText.setText("Partie terminée !");
   gameOverText.setVisible(true);
-
   scoreText.setText("Score: " + score);
   bestScoreText.setText("Meilleur: " + bestScore);
-
   startMenu.setVisible(true);
   startButton.setText("▶ REJOUER");
   gameStarted = false;
 }
 
 
-//   UTILITAIRES
-
+// -------- OUTILS --------
 function randomX() {
   const cols = Math.floor(config.width / cellSize);
   return Math.floor(Math.random() * cols) * cellSize;
@@ -354,19 +299,12 @@ function randomY() {
   const rows = Math.floor(config.height / cellSize);
   return Math.floor(Math.random() * rows) * cellSize;
 }
-
-// --- Appliquer ou retirer le flou sur le fond ---
 function setBackgroundBlur(scene, active) {
-  const bg = bgContainer && bgContainer.list && bgContainer.list[0];
+  const bg = bgContainer?.list?.[0];
   if (!bg) return;
-
-  if (active) {
-    // ajoute un flou sur l'image de fond uniquement
-    blurEffect = bg.postFX.addBlur(6, 6, 0.4);
-  } else {
-    if (blurEffect) {
-      bg.postFX.clear();
-      blurEffect = null;
-    }
+  if (active) blurEffect = bg.postFX.addBlur(6, 6, 0.4);
+  else if (blurEffect) {
+    bg.postFX.clear();
+    blurEffect = null;
   }
 }
