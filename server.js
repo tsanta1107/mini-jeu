@@ -1,32 +1,19 @@
-const http = require('http');
-const fs = require('fs');
+// server.js
+const express = require('express');
 const path = require('path');
 
-// Définir le port
+const app = express();
 const PORT = 3000;
 
-// Créer le serveur
-const server = http.createServer((req, res) => {
-  // Si l’utilisateur demande la page d’accueil
-  if (req.url === '/' || req.url === '/index.html') {
-    const filePath = path.join(__dirname, 'index.html');
-    fs.readFile(filePath, (err, content) => {
-      if (err) {
-        res.writeHead(500, { 'Content-Type': 'text/plain' });
-        res.end('Erreur interne du serveur');
-      } else {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(content);
-      }
-    });
-  } else {
-    // Si la page n’existe pas
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Page non trouvée');
-  }
+// Middleware pour servir les fichiers statiques du dossier "public"
+app.use(express.static(path.join(__dirname)));
+
+// Route principale (index.html)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname,'index.html'));
 });
 
-// Démarrer le serveur
-server.listen(PORT, () => {
-  console.log(`✅ Serveur en ligne sur http://localhost:${PORT}`);
+// Démarrage du serveur
+app.listen(PORT, () => {
+  console.log(`Serveur en cours d’exécution sur http://localhost:${PORT}`);
 });

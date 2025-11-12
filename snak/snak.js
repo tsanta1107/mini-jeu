@@ -22,16 +22,23 @@ let sceneRef;
 let isPaused = false;
 let gameStarted = false;
 let gameOverText;
-let bg;
+let bgContainer;
+let blurEffect;
 let obstacles = [];
 let startMenu;
 let startButton;
 let titleText;
 let playerName = "à vous"; // pseudo
+let pauseText;
 
 const game = new Phaser.Game(config);
 
+
+//      PRELOAD
+
 function preload() {
+  this.load.image('herbe', 'snak/assets/boz.jpg');
+
   const g1 = this.add.graphics();
   g1.fillStyle(0x0088ff, 0.7);
   g1.fillRect(0, 0, cellSize, cellSize);
@@ -51,14 +58,17 @@ function preload() {
   g3.destroy();
 }
 
+
+//      CREATE
+
 function create() {
   sceneRef = this;
-  
-  // --- Fond coloré uni ---
-bg = this.add.rectangle(400, 300, 800, 600, 0x000000); // vert foncé
-bg.setOrigin(0.5);
-bg.setDepth(-1);
 
+  // --- Fond herbe ---
+  bgContainer = this.add.container(0, 0);
+  const bgImage = this.add.image(400, 300, 'herbe').setDisplaySize(800, 600);
+  bgContainer.add(bgImage);
+  bgContainer.setDepth(-10);
 
   // --- Menu principal ---
   titleText = this.add.text(400, 180, "🐍 SNAKE GAME 🐍", {
@@ -81,13 +91,8 @@ bg.setDepth(-1);
   }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
   // Effet hover
-  startButton.on('pointerover', () => {
-    startButton.setStyle({ fill: "#00ff00" });
-  });
-  startButton.on('pointerout', () => {
-    startButton.setStyle({ fill: "#ffd700" });
-  });
-
+  startButton.on('pointerover', () => startButton.setStyle({ fill: "#00ff00" }));
+  startButton.on('pointerout', () => startButton.setStyle({ fill: "#ffd700" }));
   startButton.on('pointerdown', () => {
     startMenu.setVisible(false);
     startGame();
@@ -99,12 +104,13 @@ bg.setDepth(-1);
   }).setOrigin(0.5).setVisible(false);
 
   // Score
-  scoreText = this.add.text(10, 10, "", { fontSize: "24px", fill: "#fff" });
-  bestScoreText = this.add.text(10, 40, "", { fontSize: "20px", fill: "#aaa" });
+  scoreText = this.add.text(10, 10, "", { fontSize: "24px", fontStyle: "bold", fill: "#000000ff" });
+  bestScoreText = this.add.text(10, 40, "", { fontSize: "20px", fontStyle: "bold", fill: "#0a0606ff" });
 
-  // Créer un groupe pour tout le menu
+  // Menu principal container
   startMenu = this.add.container(0, 0, [titleText, playerText, startButton]);
 
+  // Touches clavier
   keys = this.input.keyboard.addKeys({
     up: Phaser.Input.Keyboard.KeyCodes.Z,
     down: Phaser.Input.Keyboard.KeyCodes.S,
@@ -117,13 +123,40 @@ bg.setDepth(-1);
     space: Phaser.Input.Keyboard.KeyCodes.SPACE
   });
 
+  // --- Pause avec espace ---
   this.input.keyboard.on('keydown-SPACE', () => {
-    if (!gameStarted && startMenu.visible) {
-      startMenu.setVisible(false);
-      startGame();
+    if (!gameStarted) {
+      if (startMenu.visible) {
+        startMenu.setVisible(false);
+        startGame();
+      }
+      return;
+    }
+
+    // --- Toggle pause ---
+    isPaused = !isPaused;
+
+    if (isPaused) {
+      setBackgroundBlur(this, true);
+      pauseText = this.add.text(400, 300, "⏸PAUSE", {
+        fontSize: "60px",
+        fill: "#ffffff",
+        fontStyle: "bold",
+        stroke: "#000000",
+        strokeThickness: 6
+      }).setOrigin(0.5).setDepth(1000);
+    } else {
+      setBackgroundBlur(this, false);
+      if (pauseText) {
+        pauseText.destroy();
+        pauseText = null;
+      }
     }
   });
 }
+
+
+//     START GAME
 
 function startGame() {
   gameStarted = true;
@@ -139,6 +172,9 @@ function startGame() {
   if (food) food.destroy();
   food = null;
 
+  // Retirer flou si présent
+  setBackgroundBlur(sceneRef, false);
+
   const startX = 400;
   const startY = 300;
   const part = sceneRef.add.image(startX, startY, "body");
@@ -146,36 +182,17 @@ function startGame() {
 
   food = sceneRef.add.image(randomX(), randomY(), "food");
 
-  for (let i = 0; i < 10; i++) createObstacle();
+  for (let i = 0; i < 20; i++) createObstacle();
 
   scoreText.setText("Score: " + score);
   bestScoreText.setText("Meilleur: " + bestScore);
 }
 
+
+//     UPDATE
+
 function update(time) {
-  bg.tilePositionX += 0.1; // fond animé lentement même dans le menu
-
   if (!gameStarted || isPaused) return;
-
-  if (direction === "LEFT") bg.tilePositionX -= 0.3;
-  else if (direction === "RIGHT") bg.tilePositionX += 0.3;
-  else if (direction === "UP") bg.tilePositionY -= 0.3;
-  else if (direction === "DOWN") bg.tilePositionY += 0.3;
-
-  obstacles.forEach(o => {
-    if (direction === "LEFT") o.sprite.x += 0.4;
-    else if (direction === "RIGHT") o.sprite.x -= 0.4;
-    else if (direction === "UP") o.sprite.y += 0.4;
-    else if (direction === "DOWN") o.sprite.y -= 0.4;
-
-    o.sprite.x += o.vx;
-    o.sprite.y += o.vy;
-
-    if (Math.random() < 0.01) {
-      o.vx = Phaser.Math.FloatBetween(-0.2, 0.2);
-      o.vy = Phaser.Math.FloatBetween(-0.2, 0.2);
-    }
-  });
 
   if ((keys.left.isDown || keys.leftA.isDown) && direction !== "RIGHT") nextDirection = "LEFT";
   else if ((keys.right.isDown || keys.rightA.isDown) && direction !== "LEFT") nextDirection = "RIGHT";
@@ -187,6 +204,9 @@ function update(time) {
     moveTimer = time + moveDelay;
   }
 }
+
+
+//     MOVE SNAKE
 
 function moveSnake() {
   direction = nextDirection;
@@ -231,6 +251,9 @@ function moveSnake() {
   }
 }
 
+
+//     OBSTACLES
+
 function createObstacle() {
   const x = randomX();
   const y = randomY();
@@ -241,6 +264,9 @@ function createObstacle() {
   obstacles.push({ sprite: obs, vx, vy });
 }
 
+
+//     GAME OVER
+
 function gameOver() {
   snake.forEach(p => p.destroy());
   snake = [];
@@ -248,6 +274,8 @@ function gameOver() {
   obstacles = [];
   if (food) food.destroy();
   food = null;
+
+  setBackgroundBlur(sceneRef, true);
 
   gameOverText.setText("Partie terminée !");
   gameOverText.setVisible(true);
@@ -260,11 +288,30 @@ function gameOver() {
   gameStarted = false;
 }
 
+
+//   UTILITAIRES
+
 function randomX() {
   const cols = Math.floor(config.width / cellSize);
   return Math.floor(Math.random() * cols) * cellSize;
 }
+
 function randomY() {
   const rows = Math.floor(config.height / cellSize);
   return Math.floor(Math.random() * rows) * cellSize;
+}
+
+// --- Appliquer ou retirer le flou sur le fond ---
+function setBackgroundBlur(scene, active) {
+  const bg = bgContainer.list[0];
+  if (!bg) return;
+
+  if (active) {
+    blurEffect = bg.postFX.addBlur(6, 6, 0.4);
+  } else {
+    if (blurEffect) {
+      bg.postFX.clear();
+      blurEffect = null;
+    }
+  }
 }
