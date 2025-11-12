@@ -30,6 +30,7 @@ let startButton;
 let titleText;
 let playerName = "à vous"; // pseudo
 let pauseText;
+let headTextureLoaded = false; // vérif charge de la tête
 
 const game = new Phaser.Game(config);
 
@@ -37,8 +38,11 @@ const game = new Phaser.Game(config);
 //      PRELOAD
 
 function preload() {
+  // Image de fond et tête (assure-toi que le chemin est correct)
   this.load.image('herbe', 'snak/assets/boz.jpg');
+  this.load.image('head', 'snak/assets/tt.png');
 
+  // Crée les textures dynamiques pour le corps, nourriture et obstacles
   const g1 = this.add.graphics();
   g1.fillStyle(0x0088ff, 0.7);
   g1.fillRect(0, 0, cellSize, cellSize);
@@ -64,7 +68,7 @@ function preload() {
 function create() {
   sceneRef = this;
 
-  // --- Fond herbe ---
+  // --- Fond herbe (conteneur pour pouvoir flouter séparément) ---
   bgContainer = this.add.container(0, 0);
   const bgImage = this.add.image(400, 300, 'herbe').setDisplaySize(800, 600);
   bgContainer.add(bgImage);
@@ -90,7 +94,6 @@ function create() {
     padding: { x: 20, y: 10 }
   }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-  // Effet hover
   startButton.on('pointerover', () => startButton.setStyle({ fill: "#00ff00" }));
   startButton.on('pointerout', () => startButton.setStyle({ fill: "#ffd700" }));
   startButton.on('pointerdown', () => {
@@ -104,8 +107,8 @@ function create() {
   }).setOrigin(0.5).setVisible(false);
 
   // Score
-  scoreText = this.add.text(10, 10, "", { fontSize: "24px", fontStyle: "bold", fill: "#000000ff" });
-  bestScoreText = this.add.text(10, 40, "", { fontSize: "20px", fontStyle: "bold", fill: "#0a0606ff" });
+  scoreText = this.add.text(10, 10, "", { fontSize: "24px", fill: "#fff" });
+  bestScoreText = this.add.text(10, 40, "", { fontSize: "20px", fill: "#aaa" });
 
   // Menu principal container
   startMenu = this.add.container(0, 0, [titleText, playerText, startButton]);
@@ -138,7 +141,7 @@ function create() {
 
     if (isPaused) {
       setBackgroundBlur(this, true);
-      pauseText = this.add.text(400, 300, "⏸PAUSE", {
+      pauseText = this.add.text(400, 300, "⏸ PAUSE", {
         fontSize: "60px",
         fill: "#ffffff",
         fontStyle: "bold",
@@ -177,12 +180,22 @@ function startGame() {
 
   const startX = 400;
   const startY = 300;
-  const part = sceneRef.add.image(startX, startY, "body");
-  snake.push(part);
+
+  //  Crée la tête (image) comme premier segment 
+  const head = sceneRef.add.image(startX, startY, 'head').setDisplaySize(cellSize, cellSize);
+  snake.push(head);
+  
+
+
+  // crée quelques segments de corps derrière la tête visuellement (facultatif)
+  for (let i = 1; i < 3; i++) {
+    const seg = sceneRef.add.image(startX - i * cellSize, startY, 'body');
+    snake.push(seg);
+  }
 
   food = sceneRef.add.image(randomX(), randomY(), "food");
 
-  for (let i = 0; i < 20; i++) createObstacle();
+  for (let i = 0; i < 6; i++) createObstacle();
 
   scoreText.setText("Score: " + score);
   bestScoreText.setText("Meilleur: " + bestScore);
@@ -233,9 +246,17 @@ function moveSnake() {
     }
   }
 
-  const newPart = sceneRef.add.image(newX, newY, "body");
-  snake.unshift(newPart);
+  // --- Crée la nouvelle tête (toujours avec la texture 'head') ---
+  const newHead = sceneRef.add.image(newX, newY, 'head').setDisplaySize(cellSize, cellSize);
+  snake.unshift(newHead);
 
+  // transforme l'ancienne tête (maintenant snake[1]) en corps
+  if (snake.length > 1) {
+    snake[1].setTexture('body');
+    snake[1].setDisplaySize(cellSize, cellSize);
+  }
+
+  // Si a mangé la nourriture, on laisse la queue (grandit)
   if (newX === food.x && newY === food.y) {
     score++;
     scoreText.setText("Score: " + score);
@@ -246,9 +267,17 @@ function moveSnake() {
     food.setPosition(randomX(), randomY());
     if (Math.random() < 0.5) createObstacle();
   } else {
+    // retire la queue
     const tail = snake.pop();
     tail.destroy();
   }
+
+  // --- Faire pivoter la tête selon la direction ---
+  const currentHead = snake[0];
+  if (direction === "UP") currentHead.setAngle(0);
+  else if (direction === "RIGHT") currentHead.setAngle(90);
+  else if (direction === "DOWN") currentHead.setAngle(180);
+  else if (direction === "LEFT") currentHead.setAngle(-90);
 }
 
 
@@ -295,7 +324,6 @@ function randomX() {
   const cols = Math.floor(config.width / cellSize);
   return Math.floor(Math.random() * cols) * cellSize;
 }
-
 function randomY() {
   const rows = Math.floor(config.height / cellSize);
   return Math.floor(Math.random() * rows) * cellSize;
@@ -303,10 +331,11 @@ function randomY() {
 
 // --- Appliquer ou retirer le flou sur le fond ---
 function setBackgroundBlur(scene, active) {
-  const bg = bgContainer.list[0];
+  const bg = bgContainer && bgContainer.list && bgContainer.list[0];
   if (!bg) return;
 
   if (active) {
+    // ajoute un flou sur l'image de fond uniquement
     blurEffect = bg.postFX.addBlur(6, 6, 0.4);
   } else {
     if (blurEffect) {
