@@ -39,7 +39,7 @@ const game = new Phaser.Game(config);
 
 function preload() {
   // Image de fond et tête (assure-toi que le chemin est correct)
-  this.load.image('herbe', 'snak/assets/boz.jpg');
+  this.load.image('herbe', 'snak/assets/herbe.jpg');
   this.load.image('head', 'snak/assets/tt.png');
   this.load.image('ail', 'snak/assets/ail.png');
   this.load.image('oignon', 'snak/assets/oignon.png');
