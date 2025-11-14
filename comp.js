@@ -15,6 +15,8 @@ const FOOD_COUNT = 5;
 let moveTimer = 0;
 const moveDelay = 150;
 let keys;
+let keyShoot;
+let bullets = [];
 let score = 0;
 let bestScore = 0;
 let scoreText;
@@ -36,45 +38,38 @@ const game = new Phaser.Game(config);
 
 
 function preload() {
-  // background & head & obstacles
+  // background & head & obstacles & skin
   this.load.image('herbe', 'snak/assets/herbe.jpg');
   this.load.image('head', 'snak/assets/r.png');
   this.load.image('ail', 'snak/assets/ail.png');
   this.load.image('oignon', 'snak/assets/oignon.png');
   this.load.image('fond2', 'snak/assets/fond2.jpg');
-  this.load.image('peau', 'snak/assets/peau.jpg'); 
+  this.load.image('peau', 'snak/assets/p.png');
+  this.load.image('bullet', 'snak/assets/balle.png');
 
-  // nourritures
+  // nourritures 
   this.load.image('1', 'snak/assets/1.png');
   this.load.image('2', 'snak/assets/2.png');
   this.load.image('3', 'snak/assets/3.png');
   this.load.image('4', 'snak/assets/4.png');
   this.load.image('5', 'snak/assets/5.png');
 
-  // corps dynamique (cercle)
-  const g1 = this.add.graphics();
-  g1.fillStyle(0x0088ff, 0.95);
-  g1.fillCircle(cellSize / 2, cellSize / 2, cellSize / 2);
-  g1.generateTexture("body", cellSize, cellSize);
-  g1.destroy();
 
-  // texture obstacle fallback
-  const g2 = this.add.graphics();
-  g2.fillStyle(0x654321, 1);
-  g2.fillRect(0, 0, cellSize, cellSize);
-  g2.generateTexture("obstacle", cellSize, cellSize);
-  g2.destroy();
+  // texture obstacle fallback (au cas où)
+ // const obst = this.add.graphics();
+  //obst.fillStyle(0x654321, 1);
+ // obst.fillRect(0, 0, cellSize, cellSize);
+ // obst.generateTexture("obstacle", cellSize, cellSize);
+  //obst.destroy();
 }
 
 
-//  CREATE 
 function create() {
   sceneRef = this;
 
-// --- Fond d'écran du menu de démarrage ---
-this.startBackground = this.add.image(400, 300, 'fond2').setDisplaySize(800, 600);
-this.startBackground.setDepth(-5);
-
+  // Fond du menu de démarrage (visible avant startGame)
+  this.startBackground = this.add.image(400, 300, 'fond2').setDisplaySize(800, 600);
+  this.startBackground.setDepth(-5);
 
   // background container (pour l'effet blur séparé)
   bgContainer = this.add.container(0, 0);
@@ -111,10 +106,10 @@ this.startBackground.setDepth(-5);
   }).setOrigin(0.5).setVisible(false);
 
   // score UI
-  scoreText = this.add.text(12, 12, "", { fontSize: "20px", fill: "#fff" }).setDepth(1000);
-  bestScoreText = this.add.text(12, 36, "", { fontSize: "16px", fill: "#aaa" }).setDepth(1000);
+  scoreText = this.add.text(12, 12, "", { fontStyle: "bold", fontSize: "20px", fill: "#fff" }).setDepth(1000);
+  bestScoreText = this.add.text(12, 36, "", { fontStyle: "bold", fontSize: "16px", fill: "#aaa" }).setDepth(1000);
 
-  // keyboard
+  // keyboard (direction + espace)
   keys = this.input.keyboard.addKeys({
     up: Phaser.Input.Keyboard.KeyCodes.Z,
     down: Phaser.Input.Keyboard.KeyCodes.S,
@@ -127,7 +122,10 @@ this.startBackground.setDepth(-5);
     space: Phaser.Input.Keyboard.KeyCodes.SPACE
   });
 
-  // espace = pause / start
+  // touche de tire
+  keyShoot = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
+
+  
   this.input.keyboard.on('keydown-SPACE', () => {
     if (!gameStarted) {
       if (startMenu.visible) {
@@ -151,9 +149,7 @@ this.startBackground.setDepth(-5);
 
 
 function startGame() {
-if (sceneRef.startBackground) {
-  sceneRef.startBackground.setVisible(false); // cacher le fond du menu
-}
+  if (sceneRef.startBackground) sceneRef.startBackground.setVisible(false); // cacher le fond du menu
 
   // reset flags & cleanup
   gameStarted = true;
@@ -162,7 +158,7 @@ if (sceneRef.startBackground) {
   direction = "RIGHT";
   nextDirection = "RIGHT";
 
-  // destroy previous sprites/events
+ 
   snake.forEach(s => { try { s.destroy(); } catch(e){} });
   snake = [];
   obstacles.forEach(o => { try { o.sprite.destroy(); } catch(e){} });
@@ -175,6 +171,9 @@ if (sceneRef.startBackground) {
     } catch(e){}
   });
   foods = [];
+  bullets.forEach(b => { try { b.sprite.destroy(); } catch(e){} });
+  bullets = [];
+
   setBackgroundBlur(sceneRef, false);
 
   // create snake head + initial segments
@@ -200,9 +199,16 @@ if (sceneRef.startBackground) {
 }
 
 
-//  UPDATE 
 function update(time) {
-  if (!gameStarted || isPaused) return;
+  
+  if (!gameStarted || isPaused) {
+    return;
+  }
+
+  // tire quand on appui sur le boutton
+  if (Phaser.Input.Keyboard.JustDown(keyShoot)) {
+    shootBullet();
+  }
 
   // input -> nextDirection
   if ((keys.left.isDown || keys.leftA.isDown) && direction !== "RIGHT") nextDirection = "LEFT";
@@ -225,10 +231,61 @@ function update(time) {
     if (o.sprite.y < 0) { o.sprite.y = 0; o.vy *= -1; }
     if (o.sprite.y > config.height) { o.sprite.y = config.height; o.vy *= -1; }
   }
+
+  // update bullets movement & collisions (manual, no physics)
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    // move
+    b.sprite.x += b.vx;
+    b.sprite.y += b.vy;
+
+    // off-screen -> remove
+    if (b.sprite.x < 0 || b.sprite.x > config.width || b.sprite.y < 0 || b.sprite.y > config.height) {
+      b.sprite.destroy();
+      bullets.splice(i, 1);
+      continue;
+    }
+
+    // collision with obstacles
+    let hit = false;
+    for (let j = obstacles.length - 1; j >= 0; j--) {
+      const o = obstacles[j];
+      if (Phaser.Math.Distance.Between(b.sprite.x, b.sprite.y, o.sprite.x, o.sprite.y) < cellSize * 0.9) {
+        // destroy obstacle
+        try { o.sprite.destroy(); } catch(e){}
+        obstacles.splice(j, 1);
+        // destroy bullet
+        try { b.sprite.destroy(); } catch(e){}
+        bullets.splice(i, 1);
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
+
+    // collision with foods (optional: bullets can destroy food)
+    for (let k = foods.length - 1; k >= 0; k--) {
+      const f = foods[k];
+      if (Phaser.Math.Distance.Between(b.sprite.x, b.sprite.y, f.sprite.x, f.sprite.y) < cellSize * 0.9) {
+        // remove food and respawn a new one
+        try {
+          if (f.blinkTimerEvent) f.blinkTimerEvent.remove(false);
+          if (f.tween) f.tween.stop();
+          f.sprite.destroy();
+        } catch(e){}
+        foods.splice(k, 1);
+        createFood(); // keep food count
+        // remove bullet
+        try { b.sprite.destroy(); } catch(e){}
+        bullets.splice(i, 1);
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
+  }
 }
 
-
-//  MOVE SNAKE 
 function moveSnake() {
   direction = nextDirection;
   const head = snake[0];
@@ -271,7 +328,7 @@ function moveSnake() {
     const f = foods[i];
     if (newX === f.sprite.x && newY === f.sprite.y) {
       ate = true;
-      // cleanup events/tweens liés
+      // cleanup events
       if (f.blinkTimerEvent) f.blinkTimerEvent.remove(false);
       if (f.tween) f.tween.stop();
       f.sprite.destroy();
@@ -290,7 +347,7 @@ function moveSnake() {
     if (tail) tail.destroy();
   }
 
-  // orientation tête
+  // orientation tête (instant) 
   const currentHead = snake[0];
   if (direction === "UP") currentHead.setAngle(0);
   else if (direction === "RIGHT") currentHead.setAngle(90);
@@ -298,8 +355,7 @@ function moveSnake() {
   else if (direction === "LEFT") currentHead.setAngle(-90);
 }
 
-
-//  CREATE FOOD (avec blink + reposition) 
+// CREATE FOOD
 function createFood() {
   const textures = ['1', '2', '3', '4', '5'];
   // place safe (évite serpent & obstacles)
@@ -321,9 +377,7 @@ function createFood() {
   const sprite = sceneRef.add.image(x, y, key).setDisplaySize(Math.round(cellSize * 1.2), Math.round(cellSize * 1.2)).setDepth(8);
 
   // planifier clignotement et déplacement si non mangée
-  // délai initial avant premier blink (ms)
   const BLINK_DELAY = 5000;
-  // comportement : après BLINK_DELAY on fait un tween alpha yoyo répété, puis reposition, puis reprogrammer
   const blinkTimerEvent = sceneRef.time.addEvent({
     delay: BLINK_DELAY,
     callback: () => blinkAndMove(sprite),
@@ -343,7 +397,7 @@ function blinkAndMove(sprite) {
     targets: sprite,
     alpha: 0.15,
     yoyo: true,
-    repeat: 6, // nombre de clignotements
+    repeat: 6,
     duration: 180,
     onComplete: () => {
       // reposition safe
@@ -363,7 +417,7 @@ function blinkAndMove(sprite) {
       sprite.setPosition(nx, ny);
       sprite.alpha = 1;
 
-      // reprogrammer le prochain blink (après une pause)
+      // reprogrammer le prochain blink
       if (fObj) {
         fObj.blinkTimerEvent = sceneRef.time.addEvent({
           delay: 5000,
@@ -378,17 +432,14 @@ function blinkAndMove(sprite) {
   if (fObj) fObj.tween = blinkTween;
 }
 
-
-//  CREATE OBSTACLE (mobile) 
+// CREATE OBSTACLE
 function createObstacle() {
   let tries = 0;
   let x, y;
   do {
     x = randomX();
     y = randomY();
-    // évite spawn trop proche du centre
     if (Phaser.Math.Distance.Between(x, y, config.width / 2, config.height / 2) < 60) { tries++; continue; }
-    // évite serpent
     const collSnake = snake.some(s => s.x === x && s.y === y);
     if (collSnake) { tries++; continue; }
     break;
@@ -401,7 +452,44 @@ function createObstacle() {
   obstacles.push({ sprite: obs, vx, vy });
 }
 
+function shootBullet() {
+  if (!gameStarted || isPaused) return;
+  const head = snake[0];
+  if (!head) return;
 
+  // create bullet image 
+  const bSprite = sceneRef.add.image(head.x, head.y, 'bullet')
+    .setDisplaySize(Math.round(cellSize * 0.1), Math.round(cellSize * 0.1))
+    .setDepth(30)
+    .setScale(0.5);
+
+  // rotation selon direction
+  if (direction === "RIGHT") bSprite.setAngle(0);
+  else if (direction === "LEFT") bSprite.setAngle(180);
+  else if (direction === "UP") bSprite.setAngle(-90);
+  else if (direction === "DOWN") bSprite.setAngle(90);
+
+  const speed = cellSize * 0.5 * 4; 
+  let vx = 0, vy = 0;
+
+  if (direction === "RIGHT") vx = speed;
+  else if (direction === "LEFT") vx = -speed;
+  else if (direction === "UP") vy = -speed;
+  else if (direction === "DOWN") vy = speed;
+
+  bullets.push({ sprite: bSprite, vx, vy, life: 1500, spawnTime: sceneRef.time.now });
+
+  sceneRef.tweens.add({
+    targets: bSprite,
+    scaleX: 1.0,
+    scaleY: 1.0,
+    duration: 80,
+    ease: 'Quad.easeOut'
+  });
+}
+
+
+// GAME OVER
 function gameOver() {
   // destroy all
   snake.forEach(s => { try { s.destroy(); } catch(e){} });
@@ -416,23 +504,21 @@ function gameOver() {
     } catch(e){}
   });
   foods = [];
+  bullets.forEach(b => { try { b.sprite.destroy(); } catch(e){} });
+  bullets = [];
 
   setBackgroundBlur(sceneRef, true);
   gameOverText.setText("Partie terminée !");
   gameOverText.setVisible(true);
   scoreText.setText("Score: " + score);
   bestScoreText.setText("Meilleur: " + bestScore);
-  if (sceneRef.startBackground) {
-  sceneRef.startBackground.setVisible(true); // réafficher le fond du menu
-}
-
+  if (sceneRef.startBackground) sceneRef.startBackground.setVisible(true); // réafficher le fond du menu
   startMenu.setVisible(true);
   startButton.setText("▶ REJOUER");
   gameStarted = false;
 }
 
-
-//  UTILITAIRES 
+// UTIL
 function randomX() {
   const cols = Math.floor(config.width / cellSize);
   return Math.floor(Math.random() * cols) * cellSize;
